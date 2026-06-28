@@ -62,16 +62,24 @@ Manual checks before committing:
 - The `name` field equals the directory name; no `--`, ≤64 chars.
 - `description` ≤ 1024 chars.
 - Every `references/...` path mentioned in `SKILL.md` resolves.
-- (For `jarvis-knowledgebase`) no leftover references to plugin-specific tools/skills: `rg -n "user_time_v0|present_files" skills/` should return nothing.
+- For any `jarvis-*` skill: no leftover references to plugin-specific tools/skills — `rg -n "user_time_v0|present_files" skills/` should return nothing.
 
 A full test install (writes into the target harness): `npx skills add . --skill <name> -y`.
 
-## The jarvis-knowledgebase skill
+## The Jarvis skill family
 
-- Ported from an earlier `own:jarvis` plugin skill and **de-pluginized**: it has no hard dependencies on sibling skills or named MCP tools.
-- **Runtime dependency:** `ripgrep` (`rg`) — every search/maintenance query is `rg` over the live KB tree. There is no index file and no daemon.
-- **KB root** resolves to `$JARVIS_KB` → a `.jarvis` marker (walked up from CWD) → `~/.jarvis`. The KB is **not** stored in this repo.
-- Three references define the contract: `taxonomy.md` (frontmatter schema + ADR lifecycle), `search-recipes.md` (rg patterns), `ingestion.md` (non-markdown → searchable markdown).
+The KB is managed by four **independently-installable** skills under `skills/`:
+
+- **`jarvis`** — overview + router; owns the **canonical KB model** (root resolution, taxonomy, schema). The other three carry compact inline copies of the contract because skills install standalone and can't share files.
+- **`jarvis-search`** — read-only find (full-text + structured `rg` queries). References: `search-recipes.md`.
+- **`jarvis-index`** — add/update/ingest/remove (removal defaults to archive; hard-delete checks inbound links). References: `taxonomy.md`, `ingestion.md`.
+- **`jarvis-doctor`** — audit/fix (orphans, broken links, lint, refactors) with confirm gates + a Mermaid decision diagram. References: `diagnostics.md`.
+
+All four are ported/de-pluginized from an earlier `own:jarvis` plugin skill — no hard dependencies on sibling skills or named MCP tools.
+
+**Maintenance rule:** the `jarvis` umbrella (`skills/jarvis/SKILL.md` model section + `skills/jarvis/references/taxonomy.md`) is the canonical KB contract. When you change the model, update the inline copies in the three sub-skills to match.
+
+**Runtime dependency:** `ripgrep` (`rg`) — every search/maintenance query is `rg` over the live KB tree. No index file, no daemon. **KB root** resolves to `$JARVIS_KB` → a `.jarvis` marker (walked up from CWD) → `~/.jarvis`; the KB is **not** stored in this repo.
 
 ## Committing
 

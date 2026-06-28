@@ -73,36 +73,5 @@ rg -l '^[[:space:]]*kind:[[:space:]]*pdf' -g '*.md'
 ```
 To hand back the original, read the note's `source.path` and present the file at `<kb-root>/<that-path>`.
 
-## Maintenance
-
-### Orphans (no inbound and no outbound links)
-```bash
-# ids that ARE linked to (appear as [[...]] somewhere)
-rg -o -I '\[\[([0-9A-Za-z:_-]+)' -or '$1' -g '*.md' | sort -u > /tmp/linked_to.txt
-
-for f in $(rg -l '^id:' -g '*.md'); do
-  id=$(rg -m1 '^id:[[:space:]]*(\S+)' -or '$1' "$f")
-  has_out=$(rg -c '\[\[' "$f" || true)
-  is_linked=$(grep -Fxq "$id" /tmp/linked_to.txt && echo 1 || echo 0)
-  if [ "${has_out:-0}" = "0" ] && [ "$is_linked" = "0" ]; then echo "ORPHAN: $f"; fi
-done
-```
-
-### Broken wikilinks (point at an id that doesn't exist)
-```bash
-rg -o -I '\[\[([0-9A-Za-z:_-]+)' -or '$1' -g '*.md' | sort -u > /tmp/targets.txt
-rg -I '^id:[[:space:]]*(\S+)' -or '$1' -g '*.md' | sort -u > /tmp/ids.txt
-comm -23 /tmp/targets.txt /tmp/ids.txt   # link targets with no matching note = broken
-```
-
-### Frontmatter lint (quick required-field check)
-```bash
-for f in $(rg -l '.' -g '*.md'); do
-  for field in id title type status created; do
-    rg -q "^$field:" "$f" || echo "MISSING $field: $f"
-  done
-done
-```
-
 ## Result presentation
 Return: `title · type/status · id · path`, then the matching snippet (`rg -C1`). Don't dump full bodies. If a hit has a `source:` block, also offer the original file.

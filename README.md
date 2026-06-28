@@ -8,7 +8,10 @@ A collection of installable [AI agent skills](https://agentskills.io/) for manag
 
 | Skill | Summary |
 |-------|---------|
-| [**jarvis-knowledgebase**](./skills/jarvis-knowledgebase/) | Manage a local corporate knowledge base / second brain of markdown notes — capture, search, organize, ingest non-markdown documents. rg-first, no database, harness-agnostic. |
+| [**jarvis**](./skills/jarvis/) | Overview + router. Owns the KB model (root, taxonomy, schema) and routes to the focused skills below. |
+| [**jarvis-search**](./skills/jarvis-search/) | Find notes — ranked full-text + structured (by type/status/team/tag) queries over YAML frontmatter. rg-driven, read-only. |
+| [**jarvis-index**](./skills/jarvis-index/) | Add, update, ingest, or remove notes. Timestamp ids, frontmatter by type; non-markdown ingestion; archive-by-default removal. |
+| [**jarvis-doctor**](./skills/jarvis-doctor/) | Audit and repair the KB — orphans, broken `[[wikilinks]]`, frontmatter lint, refactors — with confirm gates and per-fix verification. |
 
 ## Install
 
@@ -21,9 +24,9 @@ npx skills add eoinhurrell/jarvis --list
 # Interactive install — pick skills and target harnesses
 npx skills add eoinhurrell/jarvis
 
-# Install just this skill, globally, into Claude Code, non-interactively
+# Install just one skill, globally, into Claude Code, non-interactively
 npx skills add eoinhurrell/jarvis \
-  --skill jarvis-knowledgebase -a claude-code -g -y
+  --skill jarvis-search -a claude-code -g -y
 
 # Install all skills into all detected harnesses
 npx skills add eoinhurrell/jarvis --all -y
@@ -46,26 +49,28 @@ npx skills add .                # installs from the working tree
 
 Updating an existing install: `npx skills update [skills…]`.
 
-## jarvis-knowledgebase
+## The Jarvis skill family
 
 Jarvis is a **local corporate second-brain** of plain markdown notes. No database, no daemon: every query walks the tree live with `ripgrep`, and the structured index (by type/project/team/status/tag/link) is a **derived view computed on demand** from YAML frontmatter. That keeps the KB portable, harness-agnostic, and impossible to corrupt.
 
-- **Five note types** — `project`, `org`, `team`, `reference`, `decision` — plus `sources/` (verbatim originals of ingested files) and `inbox/` (capture to triage).
-- **Cross-cutting structure** via `tags:` and `[[wikilinks]]`, not deep folders.
-- **Non-markdown ingestion** — PDF/Word/Excel/PPT/CSV/HTML/images are converted to searchable markdown that links back to the stored original.
-- **Maintenance** — orphan detection, broken-link audits, and frontmatter linting, all from `rg` recipes.
+The KB is managed by four focused, **independently-installable** skills (install only what you need):
+
+- **[`jarvis`](./skills/jarvis/)** — overview + router. Owns the KB model: root resolution, the five note types (`project`, `org`, `team`, `reference`, `decision`) plus `sources/` (verbatim originals) and `inbox/` (capture), the frontmatter schema, and the `tags:` + `[[wikilinks]]` cross-cutting model.
+- **[`jarvis-search`](./skills/jarvis-search/)** — find notes (read-only): ranked full-text + structured queries.
+- **[`jarvis-index`](./skills/jarvis-index/)** — add / update / ingest / remove notes; non-markdown files become searchable markdown linking back to the original.
+- **[`jarvis-doctor`](./skills/jarvis-doctor/)** — audit and repair: orphans, broken links, frontmatter lint, refactors.
 
 **Where the KB lives** (resolved in this order):
 1. `$JARVIS_KB` env var (override)
 2. a `.jarvis` marker file (walk up from the current directory — for a project-local KB)
 3. `~/.jarvis` (the default; created on first use)
 
-See the skill's own [`SKILL.md`](./skills/jarvis-knowledgebase/SKILL.md) and its [`references/`](./skills/jarvis-knowledgebase/references/) for the full taxonomy, search recipes, and ingestion contract.
+Each skill's `SKILL.md` and `references/` carry the full detail; the `jarvis` umbrella is the canonical KB model.
 
 ### Runtime prerequisites
 
 - **Required:** [`ripgrep`](https://github.com/BurntSushi/ripgrep) (`rg`) — every query depends on it.
-- **Optional** (only for ingesting non-markdown files): `pdftotext`/`ocrmypdf`/`pytesseract` (PDF/OCR), `pandoc` (Word/HTML), `python-docx` / `openpyxl` / `python-pptx` (Office), `csvkit` (CSV).
+- **Optional** (only for ingesting non-markdown files, via `jarvis-index`): `pdftotext`/`ocrmypdf`/`pytesseract` (PDF/OCR), `pandoc` (Word/HTML), `python-docx` / `openpyxl` / `python-pptx` (Office), `csvkit` (CSV).
 
 ## Repository layout
 
@@ -75,12 +80,18 @@ jarvis/
 ├── CLAUDE.md
 ├── LICENSE
 └── skills/
-    └── jarvis-knowledgebase/
+    ├── jarvis/                  # overview + router (canonical KB model)
+    │   ├── SKILL.md
+    │   └── references/taxonomy.md
+    ├── jarvis-search/           # find notes (read-only)
+    │   ├── SKILL.md
+    │   └── references/search-recipes.md
+    ├── jarvis-index/            # add / update / ingest / remove
+    │   ├── SKILL.md
+    │   └── references/{taxonomy.md, ingestion.md}
+    └── jarvis-doctor/           # audit + repair
         ├── SKILL.md
-        └── references/
-            ├── taxonomy.md
-            ├── search-recipes.md
-            └── ingestion.md
+        └── references/diagnostics.md
 ```
 
 Each skill is a directory under `skills/` containing a `SKILL.md` (YAML frontmatter + instructions) plus optional `references/`, `scripts/`, or `assets/`. See [`CLAUDE.md`](./CLAUDE.md) for how to add and validate a skill.
