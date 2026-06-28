@@ -1,6 +1,6 @@
 # Jarvis
 
-A collection of installable [AI agent skills](https://agentskills.io/) for managing a local knowledge base and related workflows. Packaged in the [vercel-labs/skills](https://github.com/vercel-labs/skills) format, so any of 70+ agent harnesses (Claude Code, Cursor, GitHub Copilot, OpenCode, and many more) can install them with a single command.
+A collection of installable [AI agent skills](https://agentskills.io/) that **index your source documents and make them findable** — rg-driven, with SIRA keyword retrieval. Packaged in the [vercel-labs/skills](https://github.com/vercel-labs/skills) format, so any of 70+ agent harnesses (Claude Code, Cursor, GitHub Copilot, OpenCode, and many more) can install them with a single command.
 
 > Install from **`eoinhurrell/jarvis`** on GitHub.
 
@@ -8,10 +8,10 @@ A collection of installable [AI agent skills](https://agentskills.io/) for manag
 
 | Skill | Summary |
 |-------|---------|
-| [**jarvis**](./skills/jarvis/) | Overview + router. Owns the KB model (root, taxonomy, schema) and routes to the focused skills below. |
-| [**jarvis-search**](./skills/jarvis-search/) | Find notes — ranked full-text + structured (by type/status/team/tag) queries over YAML frontmatter. rg-driven, read-only. |
-| [**jarvis-index**](./skills/jarvis-index/) | Add, update, ingest, or remove notes. Timestamp ids, frontmatter by type; non-markdown ingestion; archive-by-default removal. |
-| [**jarvis-doctor**](./skills/jarvis-doctor/) | Audit and repair the KB — orphans, broken `[[wikilinks]]`, frontmatter lint, refactors — with confirm gates and per-fix verification. |
+| [**jarvis**](./skills/jarvis/) | Overview + router. Owns the source-index model (root resolution, the two-folder layout, the metadata schema) and routes to the sub-skills. |
+| [**jarvis-search**](./skills/jarvis-search/) | Find indexed sources — ranked full-text + SIRA keyword-field match, default-on query expansion, resolves every hit to its original file. |
+| [**jarvis-index**](./skills/jarvis-index/) | Index a source (store the original + generate findable metadata + SIRA keywords), or remove one. |
+| [**jarvis-doctor**](./skills/jarvis-doctor/) | Audit and repair index health — missing/stale/un-indexed/duplicate sources, stale keywords — with confirm gates and per-fix verification. |
 
 ## Install
 
@@ -51,26 +51,23 @@ Updating an existing install: `npx skills update [skills…]`.
 
 ## The Jarvis skill family
 
-Jarvis is a **local corporate second-brain** of plain markdown notes. No database, no daemon: every query walks the tree live with `ripgrep`, and the structured index (by type/project/team/status/tag/link) is a **derived view computed on demand** from YAML frontmatter. That keeps the KB portable, harness-agnostic, and impossible to corrupt.
+Jarvis is a **local index of source documents**. You point it at files (PDFs, Office docs, code, text); it stores each original verbatim and generates a searchable metadata file so you can find the source again. No database, no daemon: every query walks the tree live with `ripgrep`, and findability is a **derived view** computed on demand from the generated metadata and [SIRA](https://arxiv.org/pdf/2605.06647) keywords. This keeps the index portable, harness-agnostic, and impossible to corrupt.
 
-The KB is managed by four focused, **independently-installable** skills (install only what you need):
+The index is **two folders**:
+- `sources/<id>/<original>` — the files you asked to index, verbatim.
+- `metadata/<id>-<slug>.md` — the generated, searchable file: extracted text (so `rg` hits), a `source:` link back to the original, and SIRA `keywords:` (vocabulary a user might search with that *isn't* in the source).
 
-- **[`jarvis`](./skills/jarvis/)** — overview + router. Owns the KB model: root resolution, the five note types (`project`, `org`, `team`, `reference`, `decision`) plus `sources/` (verbatim originals) and `inbox/` (capture), the frontmatter schema, and the `tags:` + `[[wikilinks]]` cross-cutting model.
-- **[`jarvis-search`](./skills/jarvis-search/)** — find notes (read-only): ranked full-text + structured queries.
-- **[`jarvis-index`](./skills/jarvis-index/)** — add / update / ingest / remove notes; non-markdown files become searchable markdown linking back to the original.
-- **[`jarvis-doctor`](./skills/jarvis-doctor/)** — audit and repair: orphans, broken links, frontmatter lint, refactors.
+It's managed by four focused, **independently-installable** skills: [`jarvis`](./skills/jarvis/) (overview/router), [`jarvis-search`](./skills/jarvis-search/) (find), [`jarvis-index`](./skills/jarvis-index/) (index/remove), [`jarvis-doctor`](./skills/jarvis-doctor/) (audit/repair).
 
-**Where the KB lives** (resolved in this order):
+**Where the index lives** (resolved in this order):
 1. `$JARVIS_KB` env var (override)
-2. a `.jarvis` marker file (walk up from the current directory — for a project-local KB)
-3. `~/.jarvis` (the default; created on first use)
-
-Each skill's `SKILL.md` and `references/` carry the full detail; the `jarvis` umbrella is the canonical KB model.
+2. `<git-root>/.jarvis/` when invoked inside a git repo (auto-added to the repo's `.gitignore`)
+3. `~/.jarvis/` (the default; created on first use)
 
 ### Runtime prerequisites
 
 - **Required:** [`ripgrep`](https://github.com/BurntSushi/ripgrep) (`rg`) — every query depends on it.
-- **Optional** (only for ingesting non-markdown files, via `jarvis-index`): `pdftotext`/`ocrmypdf`/`pytesseract` (PDF/OCR), `pandoc` (Word/HTML), `python-docx` / `openpyxl` / `python-pptx` (Office), `csvkit` (CSV).
+- **Optional** (only for indexing non-text sources, via `jarvis-index`): `pdftotext`/`ocrmypdf`/`pytesseract` (PDF/OCR), `pandoc` (Word/HTML), `python-docx` / `openpyxl` / `python-pptx` (Office), `csvkit` (CSV).
 
 ## Repository layout
 
@@ -80,21 +77,21 @@ jarvis/
 ├── CLAUDE.md
 ├── LICENSE
 └── skills/
-    ├── jarvis/                  # overview + router (canonical KB model)
+    ├── jarvis/                  # overview + router (canonical model)
     │   ├── SKILL.md
-    │   └── references/taxonomy.md
-    ├── jarvis-search/           # find notes (read-only)
+    │   └── references/schema.md
+    ├── jarvis-search/           # find sources
     │   ├── SKILL.md
-    │   └── references/search-recipes.md
-    ├── jarvis-index/            # add / update / ingest / remove
+    │   └── references/{search-recipes.md, query-expansion.md}
+    ├── jarvis-index/            # index / remove sources
     │   ├── SKILL.md
-    │   └── references/{taxonomy.md, ingestion.md}
+    │   └── references/{ingestion.md, sira-index.md}
     └── jarvis-doctor/           # audit + repair
         ├── SKILL.md
         └── references/diagnostics.md
 ```
 
-Each skill is a directory under `skills/` containing a `SKILL.md` (YAML frontmatter + instructions) plus optional `references/`, `scripts/`, or `assets/`. See [`CLAUDE.md`](./CLAUDE.md) for how to add and validate a skill.
+Each skill is a directory under `skills/` containing a `SKILL.md` (YAML frontmatter + instructions) plus optional `references/`. See [`CLAUDE.md`](./CLAUDE.md) for how to add and validate a skill.
 
 ## Adding a skill
 

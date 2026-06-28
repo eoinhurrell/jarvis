@@ -1,38 +1,49 @@
 ---
 name: jarvis-doctor
-description: Audit and repair the Jarvis local knowledge base of markdown notes. Use when the user wants to CHECK or FIX KB health — "jarvis, fix the KB", "find orphan notes", "check for broken links", "lint the frontmatter", "clean up the KB", "refactor the taxonomy", "are there stale notes". Diagnoses orphans, broken [[wikilinks]], and frontmatter issues with ripgrep, then proposes and applies fixes behind explicit confirm gates (each fix is verified by re-running the diagnostic until clean). To search use jarvis-search; to add or remove notes use jarvis-index.
+description: Audit and repair the Jarvis source index. Use when the user wants to CHECK or FIX index health — "check the Jarvis index", "find stale sources", "find missing sources", "dedupe the index", "re-index what changed", "are there orphaned files". Diagnoses sources whose original is missing or changed, un-indexed sources, stale SIRA keywords, and duplicate sources with ripgrep, then proposes and applies fixes behind explicit confirm gates (each fix is verified by re-running the check until clean). To find sources use jarvis-search; to index or remove sources use jarvis-index.
 license: MIT
 ---
 
-# Jarvis Doctor — audit and repair the knowledge base
+# Jarvis Doctor — audit and repair the source index
 
-Diagnose and fix common KB issues, then verify each fix. All checks are `rg` over the live tree (no index). This skill **mutates** the KB under confirm gates; to just search use `jarvis-search`, to add/remove notes use `jarvis-index`.
+Diagnose and fix index-health issues, then verify each fix. All checks are `rg`/shell over `metadata/` and `sources/`. This skill **mutates** the index under confirm gates; to search use `jarvis-search`, to index/remove sources use `jarvis-index`.
 
-## KB contract (compact)
+## KB root resolution
 
-**Root** — `$JARVIS_KB` → a `.jarvis` marker (walk up from CWD) → `~/.jarvis` (default; create if missing) → ask. Paths relative to KB root.
+Resolve the index root in this order, stopping at the first hit:
+1. `$JARVIS_KB` env var (explicit override).
+2. **Inside a git repo** — `<git-root>/.jarvis/` (`git rev-parse --show-toplevel`); ensure `/.jarvis/` is in that repo's `.gitignore`.
+3. **`~/.jarvis/`** (default; create if missing).
+4. If none is suitable, ask the user.
 
-**rg-first, no index.** Five types in frontmatter (`project|org|team|reference|decision`); cross-cutting via `tags:` + inline `[[wikilinks]]` (no `links:` array). Notes open with YAML (`id, title, type, status, created, updated, …`).
+All paths below are relative to the index root.
+
+## Storage layout (compact)
+
+- `metadata/<id>-<slug>.md` — generated, with a `source:` block (`path`, `sha256`, …) + `keywords:`.
+- `sources/<id>/<original>` — the verbatim originals.
+
+The `<id>` pairs a metadata file with its source.
 
 ## Diagnostic → fix loop
 
-1. **Run diagnostics** — orphans, broken `[[wikilinks]]`, frontmatter lint. Exact `rg` pipelines and the decision flow (Mermaid) are in `references/diagnostics.md` — read both before acting.
-2. **Classify** each finding and **propose** a fix (fix the id / create a stub / remove the link / link the orphan / archive / fill the missing field / correct an invalid type or status).
-3. **Confirm gate** — any fix touching >5 files, or any accepted decision, requires showing the full plan and getting explicit confirmation.
-4. **Apply** the fix, then **re-run the same diagnostic** — it must come back clean (verification). If not, re-classify and repeat.
-5. **Report** what was found, what was fixed, and what was left flagged for the user.
+1. **Run diagnostics** — missing source, un-indexed source, stale source (sha mismatch), stale keywords, duplicate source. Exact pipelines and the decision flow (Mermaid) are in `references/diagnostics.md` — read both before acting.
+2. **Classify** each finding and **propose** a fix (remove orphaned metadata / index the source / re-index the changed source / regenerate keywords / dedupe).
+3. **Confirm gate** — any fix touching >5 files requires showing the full plan and getting explicit confirmation.
+4. **Apply** the fix, then **re-run the same check** — it must come back clean (verification). If not, re-classify and repeat.
+5. **Report** what was found, fixed, and left flagged.
 
 ## What it checks
-- **Orphans** — notes whose `id` is linked nowhere and that declare no outbound links.
-- **Broken links** — `[[id]]` references whose target `id` doesn't exist.
-- **Frontmatter lint** — notes missing required fields (`id, title, type, status, created`) or carrying an invalid `type`/`status`; per-type extras from the table in `references/diagnostics.md`.
-- **Refactors** — taxonomy moves / id merges (high blast radius): always dry-run first (list every file that moves and every link that needs rewriting), confirm, then apply and verify links are clean.
+- **Missing source** — a metadata file whose `source.path` no longer exists (original deleted). Offer to remove the orphaned metadata, or re-acquire.
+- **Un-indexed source** — a `sources/<id>/` entry with no matching `metadata/<id>*.md`. Offer to index it.
+- **Stale source** — `source.sha256` ≠ current hash of the original (source changed). Offer to re-index.
+- **Stale keywords** — source changed but `keywords:` not regenerated, or `index_generated` missing. Offer to regenerate via `jarvis-index`'s SIRA step.
+- **Duplicate source** — same `sha256` across two metadata files. Offer to dedupe (keep one).
 
 ## Guardrails
-- Decisions (`type: decision`, `status: accepted`) are immutable — never edit in place; propose supersession instead.
 - Never bulk-rewrite without confirming. Confirm before any operation touching >5 files.
-- Don't create folders beyond the seven top-level without asking.
+- Re-indexing rewrites only the `<!-- extracted -->` region; preserve `id` and the `<!-- user-notes -->` region.
 
 ## Where to look
-- `references/diagnostics.md` — `rg` pipelines + per-type required-fields table + refactor dry-run + the Mermaid decision diagram.
-- Search → `jarvis-search`; add/remove → `jarvis-index`.
+- `references/diagnostics.md` — `rg`/shell pipelines for each check + the Mermaid decision diagram.
+- Search → `jarvis-search`; index/remove → `jarvis-index`.

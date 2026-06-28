@@ -37,7 +37,7 @@ Frontmatter is **strictly validated**. Get these right or the skill won't instal
 
 Body conventions (progressive disclosure):
 - Keep `SKILL.md` under ~500 lines. Put long detail in `references/` and reference it by relative path — those files load only when the skill needs them.
-- Reference files with paths relative to the skill root, e.g. `references/taxonomy.md`.
+- Reference files with paths relative to the skill root, e.g. `references/schema.md`.
 - Be harness-agnostic. Don't hard-depend on a specific sibling skill or a named MCP tool; phrase such things as "if available" / "use a dedicated X tool".
 
 ## Adding a skill
@@ -68,19 +68,21 @@ A full test install (writes into the target harness): `npx skills add . --skill 
 
 ## The Jarvis skill family
 
-The KB is managed by four **independently-installable** skills under `skills/`:
+Jarvis is a **source index** (not a note taxonomy): originals stored verbatim under `sources/<id>/`, with a generated `metadata/<id>-slug.md` per source (extracted text + a `source:` link + SIRA `keywords:`) that makes it findable. Four independently-installable skills:
 
-- **`jarvis`** — overview + router; owns the **canonical KB model** (root resolution, taxonomy, schema). The other three carry compact inline copies of the contract because skills install standalone and can't share files.
-- **`jarvis-search`** — read-only find (full-text + structured `rg` queries). References: `search-recipes.md`.
-- **`jarvis-index`** — add/update/ingest/remove (removal defaults to archive; hard-delete checks inbound links). References: `taxonomy.md`, `ingestion.md`.
-- **`jarvis-doctor`** — audit/fix (orphans, broken links, lint, refactors) with confirm gates + a Mermaid decision diagram. References: `diagnostics.md`.
+- **`jarvis`** — overview + router; owns the **canonical model** (`skills/jarvis/SKILL.md` + `references/schema.md`). The other three carry compact inline copies because skills install standalone and can't share files.
+- **`jarvis-search`** — read-only find (full-text + SIRA keyword match, default-on query expansion). References: `search-recipes.md`, `query-expansion.md`.
+- **`jarvis-index`** — index/remove sources (SIRA keywords generated on index/re-index). References: `ingestion.md`, `sira-index.md`.
+- **`jarvis-doctor`** — audit/fix (missing/un-indexed/stale/duplicate sources, stale keywords) with confirm gates + a Mermaid decision diagram. References: `diagnostics.md`.
 
-All four are ported/de-pluginized from an earlier `own:jarvis` plugin skill — no hard dependencies on sibling skills or named MCP tools.
+All four are de-pluginized (no sibling-skill or MCP-tool hard deps).
 
-**Maintenance rule:** the `jarvis` umbrella (`skills/jarvis/SKILL.md` model section + `skills/jarvis/references/taxonomy.md`) is the canonical KB contract. When you change the model, update the inline copies in the three sub-skills to match.
+**Maintenance rule:** the `jarvis` umbrella is the canonical index contract. When you change the model, update the inline copies in the three sub-skills to match.
 
-**Runtime dependency:** `ripgrep` (`rg`) — every search/maintenance query is `rg` over the live KB tree. No index file, no daemon. **KB root** resolves to `$JARVIS_KB` → a `.jarvis` marker (walked up from CWD) → `~/.jarvis`; the KB is **not** stored in this repo.
+**KB root:** `$JARVIS_KB` → `<git-root>/.jarvis/` when inside a git repo (`git rev-parse --show-toplevel`; auto-added to that repo's `.gitignore`) → `~/.jarvis/` → ask. The index is **not** stored in this repo.
+
+**Runtime dependency:** `ripgrep` (`rg`) — every query/check is `rg` over the live index. No daemon, no database.
 
 ## Committing
 
-This repo uses git on the `main` branch, with `origin` at `git@github.com:eoinhurrell/jarvis.git`. A `.gitignore` keeps local harness installs (`.claude/`, `.agents/`) out of the tree.
+This repo uses git on the `main` branch, with `origin` at `git@github.com:eoinhurrell/jarvis.git`. A `.gitignore` keeps local harness installs (`.claude/`, `.agents/`) out of the tree. Prefer conventional commits whose bodies explain the *benefit* of the change.

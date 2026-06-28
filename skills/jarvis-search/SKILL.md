@@ -1,42 +1,44 @@
 ---
 name: jarvis-search
-description: Find notes in the Jarvis local knowledge base of markdown notes. Use when the user wants to FIND information in the KB — "jarvis, find…", "search the KB for…", "where in the KB did we decide X", "what notes mention…", "list active projects owned by team Y". Returns ranked full-text hits and structured queries (by type/status/team/tag/owner) over YAML frontmatter, driven by ripgrep over the live tree with no persisted index. To add, update, ingest, or remove notes use jarvis-index; to audit or fix the KB use jarvis-doctor.
+description: Find indexed sources in the Jarvis source index. Use when the user wants to FIND a source document — "jarvis, find…", "search the index for…", "where's the doc about X", "what did we index that mentions…". Searches the generated metadata/ with ripgrep (ranked full-text + SIRA keyword-field matching), expands the query with SIRA vocabulary by default, and resolves every hit back to its original source file. To index or remove sources use jarvis-index; to audit/repair the index use jarvis-doctor.
 license: MIT
 ---
 
-# Jarvis Search — find notes in the knowledge base
+# Jarvis Search — find indexed sources
 
-Find notes in the Jarvis knowledge base. No database, no daemon: every query walks the tree live with `rg`. This skill only **reads** — to add/remove notes use `jarvis-index`, to audit/fix use `jarvis-doctor`.
+Find source documents in the Jarvis index. No database, no daemon: every query walks `metadata/` live with `rg`. This skill only **reads** — to index/remove sources use `jarvis-index`, to audit/fix use `jarvis-doctor`.
 
-## KB contract (compact)
+## KB root resolution
 
-**Root** — resolve in order: `$JARVIS_KB` → a `.jarvis` marker (walk up from CWD) → `~/.jarvis` (default; create if missing) → ask. Paths below are relative to the KB root.
+Resolve the index root in this order, stopping at the first hit:
+1. `$JARVIS_KB` env var (explicit override).
+2. **Inside a git repo** — `<git-root>/.jarvis/` (`git rev-parse --show-toplevel`); ensure `/.jarvis/` is in that repo's `.gitignore`.
+3. **`~/.jarvis/`** (default; create if missing).
+4. If none is suitable, ask the user.
 
-**rg-first, no index** — structured queries are frontmatter `rg` patterns; full-text is body `rg`.
+All paths below are relative to the index root.
 
-**Types** (`type:` field; cross-cutting via `tags:` + `[[wikilinks]]`):
-```
-projects/ project · org/ org · teams/ team · reference/ reference · decisions/ decision · sources/ (ingested originals) · inbox/ (capture)
-```
+## Storage layout (compact)
 
-**Frontmatter fields:** `id, title, type, status, project, team, owner, created, updated, tags, source`. Outbound links are inline `[[id]]` in the body (no `links:` array). A note with a `source:` block was ingested from a non-markdown original.
+- `metadata/<id>-<slug>.md` — generated, searchable: extracted text + a `source:` link + `keywords:` (SIRA).
+- `sources/<id>/<original>` — the verbatim original a metadata file resolves back to.
+
+Every metadata file has a `source:` block, so every hit resolves to a real source.
 
 ## Search workflow
 
-1. **Expand the query (default-on).** For a natural-language query, first generate extra search terms via the SIRA query-expansion prompt (`references/query-expansion.md`), drop any term that hits zero notes (DF>0 filter), and rank by weighted match density so original terms outrank expansion-only hits. Skip expansion for precise lookups — a note `id`, an exact quoted phrase, a filename — or when the user opts out.
-2. **Compose the query.** For anything beyond a plain keyword, read `references/search-recipes.md` first — tuned `rg` patterns for every field, tag membership, ranked full-text, and the multi-field (AND) intersect. (Expanded terms join these patterns; notes carrying matching `keywords:` surface here too.)
-3. **Full-text** — `rg -i` over bodies; rank by match density.
-4. **Structured** ("active projects owned by team X", "accepted decisions tagged retrieval") — chain frontmatter `rg` with `-l` + a second pass (recipes in the reference).
-5. **Always surface `id` and path** so the result can be opened/linked.
-6. **Ingested-source resolution** — if a hit has a `source:` block, read its `source.path` and present that original file to the user (via your harness's file-presentation tooling if available), not just the derived markdown.
+1. **Expand the query (default-on).** For a natural-language query, generate extra search terms via the SIRA query-expansion prompt (`references/query-expansion.md`), drop any term hitting zero metadata files (DF>0 filter), and rank by weighted match density so original terms outrank expansion-only hits. Skip expansion for precise lookups (a source `id`, an exact quoted phrase, a filename) or when the user opts out.
+2. **Compose the query.** For anything beyond a plain keyword, read `references/search-recipes.md` first — ranked full-text, `^keywords:` field matching, and weighted-density ranking. (Expanded terms join these patterns; sources carrying matching `keywords:` surface here.)
+3. **Full-text** — `rg -i` over `metadata/`; rank by match density.
+4. **Always surface `id` and path** so the result can be opened.
+5. **Resolve the source.** Every hit has a `source:` block — read `source.path` (relative to the index root) and present that original file to the user (via your harness's file-presentation tooling if available), not just the metadata.
 
 ## Output conventions
-- Compact list — `title · type/status · id · path`, then the matching snippet (`rg -C1`).
-- Never dump full note bodies unless asked; show the snippet + offer to open.
-- For structured rollups (counts by type/status), a short table is fine.
+- Compact list — `title · id · path`, then the matching snippet (`rg -C1`).
+- Never dump full metadata bodies unless asked; show the snippet + offer to open the source.
+- Note briefly whether each top hit matched on original text or an expanded/SIRA keyword.
 
 ## Where to look
-- `references/search-recipes.md` — every `rg` pattern you need (read before non-trivial queries).
+- `references/search-recipes.md` — `rg` patterns: ranked full-text, `keywords:` matching, weighted ranking.
 - `references/query-expansion.md` — SIRA query expansion (query-time prompt, DF>0 filter, weighted ranking).
-- Add / update / ingest / remove a note → `jarvis-index`.
-- Audit / fix / refactor → `jarvis-doctor`.
+- Index/remove sources → `jarvis-index`; audit/fix → `jarvis-doctor`.

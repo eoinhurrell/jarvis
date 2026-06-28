@@ -1,74 +1,67 @@
 ---
 name: jarvis-index
-description: Add, update, ingest, or remove notes in the Jarvis local knowledge base of markdown notes. Use when the user wants to CAPTURE or CHANGE KB content — "add this to the KB", "create a note for…", "ingest this PDF/docx into Jarvis", "update that note", "archive/remove/delete this note". Notes use timestamp ids and YAML frontmatter by type (project/org/team/reference/decision); non-markdown files are ingested into searchable markdown linking back to the stored original. Removal defaults to archiving; hard-delete requires confirmation and checks inbound links. To search use jarvis-search; to audit/fix use jarvis-doctor.
+description: Index a source document into the Jarvis source index, or remove one. Use when the user wants to ADD or REMOVE indexed sources — "index this PDF/docx/folder into Jarvis", "add this to the index", "re-index this", "remove/delete that source from Jarvis". Each source is stored verbatim under sources/<id>/ and a generated metadata/<id>-slug.md makes it findable (extracted text + a link back to the source + SIRA keywords). To find sources use jarvis-search; to audit/repair the index use jarvis-doctor.
 license: MIT
 ---
 
-# Jarvis Index — add, update, ingest, and remove notes
+# Jarvis Index — index and remove sources
 
-Capture and change content in the Jarvis knowledge base. This skill **writes**; to find notes use `jarvis-search`, to audit/fix use `jarvis-doctor`.
+Add source documents to the Jarvis index, or remove them. This skill **writes** the index; to find sources use `jarvis-search`, to audit/fix use `jarvis-doctor`.
 
-## KB contract (compact)
+## KB root resolution
 
-**Root** — `$JARVIS_KB` → a `.jarvis` marker (walk up from CWD) → `~/.jarvis` (default; create if missing) → ask. Paths below are relative to the KB root.
+Resolve the index root in this order, stopping at the first hit:
+1. `$JARVIS_KB` env var (explicit override).
+2. **Inside a git repo** — `<git-root>/.jarvis/` (`git rev-parse --show-toplevel`); ensure `/.jarvis/` is in that repo's `.gitignore` (append if missing).
+3. **`~/.jarvis/`** (default; create if missing).
+4. If none is suitable, ask the user.
 
-**rg-first, no index.** Type lives in frontmatter (`type:`); folders are shallow. Cross-cutting via `tags:` + `[[wikilinks]]`.
+All paths below are relative to the index root.
 
-**Types & folders:** `projects/ project · org/ org · teams/ team · reference/ reference · decisions/ decision · sources/ (ingested originals) · inbox/ (capture)`.
+## Storage layout
 
-**Schema (common fields):**
+```
+<kb-root>/
+├── sources/<id>/<original>     # verbatim originals
+└── metadata/<id>-<slug>.md     # generated: extracted text + source: + keywords:
+```
+
+## Metadata file schema
+
 ```yaml
 ---
-id: 20260622T143000     # YYYYMMDDThhmmss; stable, never reused
-title: Human Readable Title
-type: project|org|team|reference|decision
-status: draft|active|blocked|done|accepted|superseded|archived
-project: project-slug
-team: team-slug
-owner: name-or-handle
-created: 2026-06-22
-updated: 2026-06-22
-tags: [retrieval, mlops]
+id: 20260622T150000
+title: Q3 Financial Report
+source:
+  path: sources/20260622T150000/q3-report.pdf
+  kind: pdf            # pdf|docx|xlsx|pptx|csv|html|image|other
+  sha256: <hash>
+  ingested: 2026-06-28
+  ingester: pdf-text
+keywords: [k8s, container orchestration]   # SIRA-generated
+index_generated: 2026-06-28
 ---
 ```
-Outbound links are inline `[[id-or-slug]]` in the body — no `links:` array. Authoritative per-type required fields and the ADR lifecycle: `references/taxonomy.md`.
+Body: an `<!-- extracted -->` region (verbatim text) and a `<!-- user-notes -->` region (human annotation, preserved on re-index).
 
 ## Workflows
 
-### Create a note
-1. Read `references/taxonomy.md` for the type's required fields.
-2. Generate `id` from the current timestamp (use the `date` command, or a time MCP tool if available); filename `<id>-<slug>.md`.
-3. Place in the type's folder (or `inbox/` to triage later).
-4. Fill frontmatter per schema; set `created:` and `updated:` to today.
-5. Lint: eyeball required fields present, valid `type`/`status`.
-6. **Index keywords (SIRA):** generate search keywords for the note (see "SIRA index keywords" below) and write `keywords:` + `index_generated:`.
+### Index a source
+1. **Dedup first.** `sha256sum <file>`; if that hash already appears in any metadata file's `source.sha256` (`rg -l '^[[:space:]]*sha256:[[:space:]]*<hash>' -g '*.md' metadata/`), skip and point at the existing source.
+2. **Generate the id.** `date +%Y%m%dT%H%M%S` (or a time tool). Copy the original verbatim into `sources/<id>/`, keeping its filename.
+3. **Extract faithful text** per `references/ingestion.md` (CLI tools + Python libs; no helper script). Preserve structure so snippets are citeable. Record the ingester.
+4. **Write the metadata file** at `metadata/<id>-<slug>.md`: frontmatter above, extracted text in the `<!-- extracted -->` region, an empty `<!-- user-notes -->` region.
+5. **Generate SIRA keywords** from the extracted text (`references/sira-index.md`) and fill `keywords:` + `index_generated:`.
+6. Never summarize during indexing — keep extracted text verbatim so `rg` hits land.
 
-### Update a note
-- Bump `updated:`; never rewrite `id` or `created`.
-- Re-validate against the type's required fields if `type:` changed.
-- If the body changed, regenerate `keywords:` (SIRA) and bump `index_generated:`.
+### Re-index a changed source
+If the source changed (sha mismatch), re-extract and rewrite **only the `<!-- extracted -->` region**, refresh `source.sha256`/`source.ingested`, regenerate `keywords:` + `index_generated:`, preserve `id` and the `<!-- user-notes -->` region.
 
-### Ingest a non-markdown document (PDF, Word, Excel, PPT, CSV, HTML, images)
-Jarvis searches markdown only, so other formats become a derived markdown note that links back to the stored original. **Read `references/ingestion.md` first** — storage model, the `source:` frontmatter contract, and per-format extraction steps (CLI tools + Python libs; no helper script).
-- Hash-and-dedup → generate `id` → copy original verbatim into `sources/<id>/` → extract faithful text → write a derived note with a `source:` block (path + sha256 + kind + ingester).
-- Never summarize during ingestion — keep extracted text verbatim so `rg` hits land.
-- After writing the derived note, generate SIRA keywords from its extracted text (`references/sira-index.md`) and add `keywords:` + `index_generated:`.
-
-### Remove a note
-Jarvis prefers **archiving** over destructive deletes.
-- **Archive (default):** set `status: archived` and keep the file. Use this unless the user clearly wants it gone. Reversible and link-safe.
-- **Hard-delete (explicit confirm only):**
-  1. Before deleting, find **inbound links** — notes whose body references this note's `id` as `[[id]]` — and warn the user; offer to rewrite or remove those links (otherwise they break).
-  2. If the note has a `source:` block, also remove its `sources/<id>/` original directory.
-  3. Delete the `.md` file.
-  4. **Guardrail:** never hard-delete an accepted decision (`type: decision`, `status: accepted`) — supersede it with a new ADR instead.
-- Confirm before removing >5 files.
-
-### SIRA index keywords
-Every note can carry LLM-generated **search keywords** in frontmatter (`keywords:` + `index_generated:`) that bridge the vocabulary gap between how a note is written and how someone might search for it — synonyms, abbreviations, and layperson terms **not present in the note text**. This is SIRA-style retrieval (arXiv 2605.06647), which lifts recall substantially on lexical/`rg` systems like Jarvis. Generate them on create and ingest, and regenerate when the body changes. **Read `references/sira-index.md`** for the exact prompt, the storage contract, and the rules — you run the prompt yourself (you are the LLM; no external call).
+### Remove a source
+- Delete `sources/<id>/` and the matching `metadata/<id>*.md`.
+- Removal is destructive — confirm before removing >5 sources, and offer to re-index instead where the source still exists elsewhere.
 
 ## Where to look
-- `references/taxonomy.md` — full schema, per-type required fields, status lifecycles.
-- `references/ingestion.md` — ingestion contract + per-format recipes.
+- `references/ingestion.md` — storage model, `source:` contract, per-format extraction recipes.
 - `references/sira-index.md` — SIRA keyword generation (index-time prompt, storage, regen rules).
-- Search → `jarvis-search`; audit/fix → `jarvis-doctor`.
+- Find sources → `jarvis-search`; audit/fix → `jarvis-doctor`.
