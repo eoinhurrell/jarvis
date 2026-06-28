@@ -41,15 +41,18 @@ Outbound links are inline `[[id-or-slug]]` in the body — no `links:` array. Au
 3. Place in the type's folder (or `inbox/` to triage later).
 4. Fill frontmatter per schema; set `created:` and `updated:` to today.
 5. Lint: eyeball required fields present, valid `type`/`status`.
+6. **Index keywords (SIRA):** generate search keywords for the note (see "SIRA index keywords" below) and write `keywords:` + `index_generated:`.
 
 ### Update a note
 - Bump `updated:`; never rewrite `id` or `created`.
 - Re-validate against the type's required fields if `type:` changed.
+- If the body changed, regenerate `keywords:` (SIRA) and bump `index_generated:`.
 
 ### Ingest a non-markdown document (PDF, Word, Excel, PPT, CSV, HTML, images)
 Jarvis searches markdown only, so other formats become a derived markdown note that links back to the stored original. **Read `references/ingestion.md` first** — storage model, the `source:` frontmatter contract, and per-format extraction steps (CLI tools + Python libs; no helper script).
 - Hash-and-dedup → generate `id` → copy original verbatim into `sources/<id>/` → extract faithful text → write a derived note with a `source:` block (path + sha256 + kind + ingester).
 - Never summarize during ingestion — keep extracted text verbatim so `rg` hits land.
+- After writing the derived note, generate SIRA keywords from its extracted text (`references/sira-index.md`) and add `keywords:` + `index_generated:`.
 
 ### Remove a note
 Jarvis prefers **archiving** over destructive deletes.
@@ -61,7 +64,11 @@ Jarvis prefers **archiving** over destructive deletes.
   4. **Guardrail:** never hard-delete an accepted decision (`type: decision`, `status: accepted`) — supersede it with a new ADR instead.
 - Confirm before removing >5 files.
 
+### SIRA index keywords
+Every note can carry LLM-generated **search keywords** in frontmatter (`keywords:` + `index_generated:`) that bridge the vocabulary gap between how a note is written and how someone might search for it — synonyms, abbreviations, and layperson terms **not present in the note text**. This is SIRA-style retrieval (arXiv 2605.06647), which lifts recall substantially on lexical/`rg` systems like Jarvis. Generate them on create and ingest, and regenerate when the body changes. **Read `references/sira-index.md`** for the exact prompt, the storage contract, and the rules — you run the prompt yourself (you are the LLM; no external call).
+
 ## Where to look
 - `references/taxonomy.md` — full schema, per-type required fields, status lifecycles.
 - `references/ingestion.md` — ingestion contract + per-format recipes.
+- `references/sira-index.md` — SIRA keyword generation (index-time prompt, storage, regen rules).
 - Search → `jarvis-search`; audit/fix → `jarvis-doctor`.

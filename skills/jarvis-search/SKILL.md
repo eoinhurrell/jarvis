@@ -23,11 +23,12 @@ projects/ project · org/ org · teams/ team · reference/ reference · decision
 
 ## Search workflow
 
-1. **Compose the query.** For anything beyond a plain keyword, read `references/search-recipes.md` first — tuned `rg` patterns for every field, tag membership, ranked full-text, and the multi-field (AND) intersect.
-2. **Full-text** — `rg -i` over bodies; rank by match density.
-3. **Structured** ("active projects owned by team X", "accepted decisions tagged retrieval") — chain frontmatter `rg` with `-l` + a second pass (recipes in the reference).
-4. **Always surface `id` and path** so the result can be opened/linked.
-5. **Ingested-source resolution** — if a hit has a `source:` block, read its `source.path` and present that original file to the user (via your harness's file-presentation tooling if available), not just the derived markdown.
+1. **Expand the query (default-on).** For a natural-language query, first generate extra search terms via the SIRA query-expansion prompt (`references/query-expansion.md`), drop any term that hits zero notes (DF>0 filter), and rank by weighted match density so original terms outrank expansion-only hits. Skip expansion for precise lookups — a note `id`, an exact quoted phrase, a filename — or when the user opts out.
+2. **Compose the query.** For anything beyond a plain keyword, read `references/search-recipes.md` first — tuned `rg` patterns for every field, tag membership, ranked full-text, and the multi-field (AND) intersect. (Expanded terms join these patterns; notes carrying matching `keywords:` surface here too.)
+3. **Full-text** — `rg -i` over bodies; rank by match density.
+4. **Structured** ("active projects owned by team X", "accepted decisions tagged retrieval") — chain frontmatter `rg` with `-l` + a second pass (recipes in the reference).
+5. **Always surface `id` and path** so the result can be opened/linked.
+6. **Ingested-source resolution** — if a hit has a `source:` block, read its `source.path` and present that original file to the user (via your harness's file-presentation tooling if available), not just the derived markdown.
 
 ## Output conventions
 - Compact list — `title · type/status · id · path`, then the matching snippet (`rg -C1`).
@@ -36,5 +37,6 @@ projects/ project · org/ org · teams/ team · reference/ reference · decision
 
 ## Where to look
 - `references/search-recipes.md` — every `rg` pattern you need (read before non-trivial queries).
+- `references/query-expansion.md` — SIRA query expansion (query-time prompt, DF>0 filter, weighted ranking).
 - Add / update / ingest / remove a note → `jarvis-index`.
 - Audit / fix / refactor → `jarvis-doctor`.

@@ -28,6 +28,8 @@ A shallow tree of five note **types** plus capture/source folders. Type lives in
 | `team`   | project/team/org| owning pillar/team slug. |
 | `owner`  | project/team    | person/handle accountable. |
 | `source` | ingested only   | block: `path, kind, sha256, ingested, ingester` (+ type-specific meta). |
+| `keywords` | optional (SIRA) | `[a, b, c]` — LLM-generated search terms NOT present in the note text; bridge vocabulary mismatch. Hit by both full-text `rg` and `^keywords:` queries. Generated via `references/sira-index.md`. |
+| `index_generated` | with `keywords` | ISO date the keywords were last generated; regenerate when the body changes. |
 
 ## Status lifecycle by type
 
